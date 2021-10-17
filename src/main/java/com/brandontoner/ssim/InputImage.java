@@ -22,6 +22,7 @@ final class InputImage {
     private final int area;
     @Nonnull
     private final double[] rgb;
+    private final float[] lumasMinusAverage;
 
     /**
      * Constructor.
@@ -45,6 +46,10 @@ final class InputImage {
         this.area = area;
         this.variance = variance;
         this.rgb = rgb;
+        this.lumasMinusAverage = new float[lumas.length];
+        for (int i = 0; i < lumas.length; i++) {
+            lumasMinusAverage[i] = lumas[i] - average;
+        }
     }
 
     /**
@@ -264,6 +269,15 @@ final class InputImage {
     float[] getLumas() {
         return lumas;
     }
+
+    /**
+     * @return lumas of the scaled image
+     */
+    @Nonnull
+    float[] getLumasMinusAverage() {
+        return lumasMinusAverage;
+    }
+
 
     /**
      * @return variance of the lumas of the scaled image

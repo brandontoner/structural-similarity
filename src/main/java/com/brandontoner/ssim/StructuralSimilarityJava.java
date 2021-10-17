@@ -6,7 +6,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
@@ -15,7 +14,9 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 class StructuralSimilarityJava {
     private static final Path KEEP_PATH = Paths.get("D:\\Users\\brand\\Pictures\\iCloud Photos\\Photos");
@@ -26,7 +27,8 @@ class StructuralSimilarityJava {
         List<InputImage> inputImages = Files.walk(KEEP_PATH)
                                             .filter(Files::isRegularFile)
                                             .filter(v -> EXTENSIONS.contains(getExtension(v)))
-                                            .collect(Collectors.toList())
+                                            .collect(Collectors.collectingAndThen(Collectors.toList(),
+                                                                                  StructuralSimilarityJava::shuffle))
                                             .parallelStream()
                                             .map(InputImage::load)
                                             .flatMap(Collection::parallelStream)
@@ -36,24 +38,18 @@ class StructuralSimilarityJava {
 
         Logger.log("Computing SSIMs");
 
-        List<SSIM> pairs = new ArrayList<>();
-        double threshold = 0.99;
-        for (int i = 0; i < inputImages.size(); i++) {
-            List<SSIM> row = new ArrayList<>(i);
-            for (int j = 0; j < i; j++) {
-                row.add(new SSIM(inputImages.get(i), inputImages.get(j)));
-            }
-            row.parallelStream().forEach(SSIM::ssim);
-            for (SSIM ssim : row) {
-                if (ssim.ssim() >= threshold) {
-                    pairs.add(ssim);
-                }
-            }
-        }
-
-        Logger.log("Sorting SSIMs");
+        double threshold = 0.95;
 
         // Compute all the SSIMs in parallel
+        List<SSIM> pairs = IntStream.range(0, inputImages.size()).parallel().mapToObj(i -> {
+            InputImage imgi = inputImages.get(i);
+            return IntStream.range(0, i)
+                            .parallel()
+                            .mapToObj(j -> new SSIM(imgi, inputImages.get(j)))
+                            .filter(ssim -> ssim.ssim() >= threshold);
+        }).flatMap(Function.identity()).collect(Collectors.toList());
+
+        Logger.log("Sorting SSIMs");
         pairs.sort(Comparator.comparingDouble(SSIM::ssim).reversed());
 
         System.out.println("keep\tdelete\tssim");

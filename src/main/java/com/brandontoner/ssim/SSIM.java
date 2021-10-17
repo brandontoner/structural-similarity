@@ -1,6 +1,5 @@
 package com.brandontoner.ssim;
 
-import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
 
 final class SSIM {
@@ -11,7 +10,7 @@ final class SSIM {
     private static final double c2 = (k2 * L) * (k2 * L);
     @Nonnull private final InputImage img1;
     @Nonnull private final InputImage img2;
-    @CheckForNull private volatile Double ssim;
+    private final double ssim;
 
     /**
      * Constructor.
@@ -22,6 +21,23 @@ final class SSIM {
     SSIM(@Nonnull InputImage img1, @Nonnull InputImage img2) {
         this.img1 = img1;
         this.img2 = img2;
+
+        float average1 = this.img1.getAverage();
+        float average2 = this.img2.getAverage();
+        float[] lumas1 = this.img1.getLumasMinusAverage();
+        float[] lumas2 = this.img2.getLumasMinusAverage();
+
+        float covariance = 0;
+        int length = lumas1.length;
+        for (int i = 0; i < length; ++i) {
+            covariance += lumas1[i] * lumas2[i];
+        }
+        covariance /= length;
+
+        float var1 = this.img1.getVariance();
+        float var2 = this.img2.getVariance();
+        ssim =
+                (2 * average1 * average2 + c1) * (2 * covariance + c2) / ((average1 * average1 + average2 * average2 + c1) * (var1 + var2 + c2));
     }
 
     /**
@@ -44,26 +60,6 @@ final class SSIM {
      * @return the SSIM of the two images
      */
     double ssim() {
-        if (ssim == null) {
-            float average1 = img1.getAverage();
-            float average2 = img2.getAverage();
-            float[] lumas1 = img1.getLumas();
-            float[] lumas2 = img2.getLumas();
-
-            float covariance1 = 0;
-            for (int i = 0; i < lumas1.length; ++i) {
-                float d1 = lumas1[i] - average1;
-                float d2 = lumas2[i] - average2;
-                covariance1 += d1 * d2;
-            }
-            covariance1 /= lumas1.length;
-            float covariance = covariance1;
-
-            float var1 = img1.getVariance();
-            float var2 = img2.getVariance();
-            ssim =
-                    (2 * average1 * average2 + c1) * (2 * covariance + c2) / ((average1 * average1 + average2 * average2 + c1) * (var1 + var2 + c2));
-        }
         return ssim;
     }
 
