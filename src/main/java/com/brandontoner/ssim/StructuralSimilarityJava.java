@@ -18,8 +18,6 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 class StructuralSimilarityJava {
-    private static final Set<File> kept = new HashSet<>();
-    private static final Map<Path, Integer> KEEP_PER_FOLDER = new HashMap<>();
     private static final Path KEEP_PATH = Paths.get("D:\\Users\\brand\\Pictures\\iCloud Photos\\Photos");
     private static final Set<String> EXTENSIONS = Set.of(".jpg", ".jpeg");
     private static final DuplicateHandler DUPLICATE_HANDLER = DuplicateHandler.noop();
@@ -36,7 +34,7 @@ class StructuralSimilarityJava {
 
         Collections.shuffle(inputImages);
 
-        System.err.println("Computing SSIMs");
+        Logger.log("Computing SSIMs");
 
         List<SSIM> pairs = new ArrayList<>();
         double threshold = 0.99;
@@ -53,19 +51,19 @@ class StructuralSimilarityJava {
             }
         }
 
-        System.err.println("Sorting SSIMs");
+        Logger.log("Sorting SSIMs");
 
         // Compute all the SSIMs in parallel
         pairs.sort(Comparator.comparingDouble(SSIM::ssim).reversed());
-        System.err.println("keep delete ssim");
 
+        System.out.println("keep\tdelete\tssim");
+
+        Set<File> kept = new HashSet<>();
+        Map<Path, Integer> keepPerFolder = new HashMap<>();
         for (SSIM pair : pairs) {
             InputImage a = pair.one();
             InputImage b = pair.two();
             double ssim = pair.ssim();
-            if (ssim < threshold) {
-                break;
-            }
             if (!rgbClose(a, b)) {
                 continue;
             }
@@ -95,12 +93,17 @@ class StructuralSimilarityJava {
                 toKeep = aFile;
                 toDelete = bFile;
             }
-            System.err.println(toKeep + " " + toDelete + " " + ssim);
+            System.out.println(toKeep + "\t" + toDelete + "\t" + ssim);
             kept.add(toKeep);
-            KEEP_PER_FOLDER.merge(toKeep.getParentFile().toPath(), 1, Integer::sum);
+            keepPerFolder.merge(toKeep.getParentFile().toPath(), 1, Integer::sum);
             DUPLICATE_HANDLER.handle(toKeep, toDelete);
         }
-        KEEP_PER_FOLDER.entrySet().forEach(System.err::println);
+        keepPerFolder.entrySet().forEach(System.err::println);
+    }
+
+    private static <T> List<T> shuffle(List<T> list) {
+        Collections.shuffle(list);
+        return list;
     }
 
     @Nonnull

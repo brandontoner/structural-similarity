@@ -26,14 +26,14 @@ public interface DuplicateHandler {
                 output = new File(toKeep.getParent(), child);
                 ++i;
             } while (output.exists());
-            System.err.println("Moving " + toDelete.getAbsolutePath() + " to " + output.getAbsolutePath());
+            Logger.log("Moving " + toDelete.getAbsolutePath() + " to " + output.getAbsolutePath());
             Files.move(toDelete.toPath(), output.toPath());
         };
     }
 
     static DuplicateHandler delete() {
         return (toKeep, toDelete) -> {
-            System.err.println("Deleting " + toDelete.getAbsolutePath());
+            Logger.log("Deleting " + toDelete.getAbsolutePath());
             toDelete.delete();
         };
     }

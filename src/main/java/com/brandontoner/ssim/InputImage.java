@@ -122,7 +122,7 @@ final class InputImage {
     @Nonnull
     static List<InputImage> load(@Nonnull Path path) {
         try {
-            System.err.println(path);
+            Logger.log("Loading " + path);
             File file = path.toFile();
             BufferedImage img = ImageIO.read(file);
             if (img == null) {
