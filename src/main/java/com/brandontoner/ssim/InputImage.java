@@ -2,27 +2,26 @@ package com.brandontoner.ssim;
 
 import javax.annotation.Nonnull;
 import javax.imageio.ImageIO;
-import java.awt.*;
+import java.awt.Graphics;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
 
 final class InputImage {
     private static final int IMAGE_SIZE = 128;
     @Nonnull
     private final File file;
-    @Nonnull
-    private final float[] lumas;
     private final float average;
     private final float variance;
     private final int area;
     @Nonnull
     private final double[] rgb;
+    @Nonnull
     private final float[] lumasMinusAverage;
+    private final boolean isKeep;
 
     /**
      * Constructor.
@@ -33,20 +32,22 @@ final class InputImage {
      * @param area     area of the original image
      * @param variance variance of the lumas of the scaled image
      * @param rgb
+     * @param isKeep
      */
     private InputImage(@Nonnull File file,
                        @Nonnull float[] lumas,
                        float average,
                        int area,
                        float variance,
-                       double[] rgb) {
+                       @Nonnull double[] rgb,
+                       boolean isKeep) {
         this.file = file;
-        this.lumas = lumas;
         this.average = average;
         this.area = area;
         this.variance = variance;
         this.rgb = rgb;
         this.lumasMinusAverage = new float[lumas.length];
+        this.isKeep = isKeep;
         for (int i = 0; i < lumas.length; i++) {
             lumasMinusAverage[i] = lumas[i] - average;
         }
@@ -69,18 +70,25 @@ final class InputImage {
     /**
      * Gets the luma values for an image.
      *
-     * @param rgbArray
+     * @param width          image width
+     * @param height         image height
+     * @param rgbArray       rgb array
+     * @param rotateFunction function used to rotate the image
      * @return array of lumas
      */
     @Nonnull
-    private static float[] getLumas(@Nonnull int[] rgbArray) {
+    private static float[] getLumas(int width, int height, @Nonnull int[] rgbArray, @Nonnull RotateFunction rotateFunction) {
         float[] lumas = new float[rgbArray.length];
-        for (int i = 0; i < rgbArray.length; i++) {
-            int rgb = rgbArray[i];
-            int r = (0x00ff0000 & rgb) >>> 16;
-            int g = (0x0000ff00 & rgb) >>> 8;
-            int b = (0x000000ff & rgb);
-            lumas[i] = 0.2126f * r + 0.7152f * g + 0.0722f * b;
+        int i = 0;
+        for (int x = 0; x < width; ++x) {
+            for (int y = 0; y < height; ++y) {
+                int rgb = rgbArray[rotateFunction.index(width, height, x, y)];
+                int r = (0x00ff0000 & rgb) >>> 16;
+                int g = (0x0000ff00 & rgb) >>> 8;
+                int b = (0x000000ff & rgb);
+                lumas[i] = 0.2126f * r + 0.7152f * g + 0.0722f * b;
+                i++;
+            }
         }
         return lumas;
     }
@@ -88,8 +96,7 @@ final class InputImage {
     @Nonnull
     private static double[] getAverageRGB(@Nonnull int[] rgbArray) {
         double[] out = new double[3];
-        for (int i = 0; i < rgbArray.length; i++) {
-            int rgb = rgbArray[i];
+        for (int rgb : rgbArray) {
             int r = (0x00ff0000 & rgb) >>> 16;
             int g = (0x0000ff00 & rgb) >>> 8;
             int b = (0x000000ff & rgb);
@@ -122,10 +129,11 @@ final class InputImage {
      * Loads an input image from a file.
      *
      * @param path input image path
+     * @param isKeep
      * @return input image
      */
     @Nonnull
-    static List<InputImage> load(@Nonnull Path path) {
+    static List<InputImage> load(@Nonnull Path path, boolean isKeep) {
         try {
             Logger.log("Loading " + path);
             File file = path.toFile();
@@ -133,95 +141,43 @@ final class InputImage {
             if (img == null) {
                 return List.of();
             }
-            List<InputImage> images = new ArrayList<>();
-            int width = img.getWidth();
-            int height = img.getHeight();
-            int[] rgb = img.getRGB(0, 0, width, height, null, 0, width);
-            int type = img.getType();
-            images.add(getInputImage(file, img));
-            images.add(getInputImage(file, rotate90cw(width, height, rgb, type)));
-            images.add(getInputImage(file, rotate180(width, height, rgb, type)));
-            images.add(getInputImage(file, rotate270cw(width, height, rgb, type)));
-            return List.copyOf(images);
+            BufferedImage scaled = scaleImage(img);
+            int width = scaled.getWidth();
+            int height = scaled.getHeight();
+            int[] rgb = scaled.getRGB(0, 0, width, height, null, 0, width);
+
+            // Rotate the image to find the canonical orientation. Doesn't matter what it is, as long as all duplicates
+            // would have the same canonical orientation.
+            float[] lumas = null;
+            for (RotateFunction function : RotateFunction.FUNCTIONS) {
+                float[] lumas1 = getLumas(width, height, rgb, function);
+                if (lumas == null || compare(lumas1, lumas) < 0) {
+                    lumas = lumas1;
+                }
+            }
+
+            float average = average(lumas);
+            return List.of(new InputImage(file,
+                                          lumas,
+                                          average,
+                                          img.getWidth() * img.getHeight(),
+                                          variance(lumas, average),
+                                          getAverageRGB(rgb),
+                                          isKeep));
         } catch (IOException e) {
             new UncheckedIOException(path + " " + e.getMessage(), e).printStackTrace();
             return List.of();
         }
     }
 
-    @Nonnull
-    private static InputImage getInputImage(File file, BufferedImage rotated) {
-        BufferedImage scaled = scaleImage(rotated);
-        int[] rgbArray = scaled.getRGB(0, 0, scaled.getWidth(), scaled.getHeight(), null, 0, scaled.getWidth());
-        double[] rgb = getAverageRGB(rgbArray);
-        float[] lumas = getLumas(rgbArray);
-        float average = average(lumas);
-        return new InputImage(file,
-                              lumas,
-                              average,
-                              rotated.getWidth() * rotated.getHeight(),
-                              variance(lumas, average),
-                              rgb);
-    }
-
-    @Nonnull
-    private static BufferedImage rotate(@Nonnull BufferedImage img, @Nonnull String orientation) {
-        int width = img.getWidth();
-        int height = img.getHeight();
-        int[] rgb = img.getRGB(0, 0, width, height, null, 0, width);
-        int type = img.getType();
-        switch (orientation) {
-            case "Top, left side (Horizontal / normal)":
-            case "Unknown (0)":
-                return img;
-            case "Right side, top (Rotate 90 CW)":
-                return rotate90cw(width, height, rgb, type);
-            case "Bottom, right side (Rotate 180)":
-                return rotate180(width, height, rgb, type);
-            case "Left side, bottom (Rotate 270 CW)":
-                return rotate270cw(width, height, rgb, type);
-            default:
-                throw new IllegalArgumentException(orientation);
+    private static int compare(@Nonnull float[] a, float[] b) {
+        float aSum = 0;
+        float bSum = 0;
+        for (int i = 0; i < a.length && i < 4; i++) {
+            aSum += a[i];
+            bSum += b[i];
         }
-    }
-
-    @Nonnull
-    private static BufferedImage rotate90cw(int width, int height, int[] rgbIn, int type) {
-        int[] rgbOut = new int[rgbIn.length];
-        for (int x = 0; x < width; x++) {
-            for (int y = 0; y < height; y++) {
-                rgbOut[(x + 1) * height - 1 - y] = rgbIn[y * width + x];
-            }
-        }
-        BufferedImage newImage = new BufferedImage(height, width, type);
-        newImage.setRGB(0, 0, height, width, rgbOut, 0, height);
-        return newImage;
-    }
-
-    @Nonnull
-    private static BufferedImage rotate180(int width, int height, int[] rgbIn, int type) {
-        int[] rgbOut = new int[rgbIn.length];
-        for (int x = 0; x < width; x++) {
-            for (int y = 0; y < height; y++) {
-                rgbOut[(height - y) * width - 1 - x] = rgbIn[y * width + x];
-            }
-        }
-        BufferedImage newImage = new BufferedImage(width, height, type);
-        newImage.setRGB(0, 0, width, height, rgbOut, 0, width);
-        return newImage;
-    }
-
-    @Nonnull
-    private static BufferedImage rotate270cw(int width, int height, int[] rgbIn, int type) {
-        int[] rgbOut = new int[rgbIn.length];
-        for (int x = 0; x < width; x++) {
-            for (int y = 0; y < height; y++) {
-                rgbOut[(width - 1 - x) * height + y] = rgbIn[y * width + x];
-            }
-        }
-        BufferedImage newImage = new BufferedImage(height, width, type);
-        newImage.setRGB(0, 0, height, width, rgbOut, 0, height);
-        return newImage;
+        return Float.compare(aSum, bSum);
     }
 
     /**
@@ -263,21 +219,12 @@ final class InputImage {
     }
 
     /**
-     * @return lumas of the scaled image
-     */
-    @Nonnull
-    float[] getLumas() {
-        return lumas;
-    }
-
-    /**
-     * @return lumas of the scaled image
+     * @return an array of {@code lumas[i] - getAverage()}
      */
     @Nonnull
     float[] getLumasMinusAverage() {
         return lumasMinusAverage;
     }
-
 
     /**
      * @return variance of the lumas of the scaled image
@@ -286,6 +233,7 @@ final class InputImage {
         return variance;
     }
 
+    @Nonnull
     double[] getRgb() {
         return rgb;
     }
@@ -294,5 +242,9 @@ final class InputImage {
     @Override
     public String toString() {
         return "InputImage{" + "file=" + file + '}';
+    }
+
+    boolean isKeep() {
+        return isKeep;
     }
 }

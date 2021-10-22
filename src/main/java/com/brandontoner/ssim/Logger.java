@@ -3,7 +3,7 @@ package com.brandontoner.ssim;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 
-public enum Logger {
+enum Logger {
     ;
 
     static void log(String message) {

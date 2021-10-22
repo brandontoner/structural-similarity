@@ -8,11 +8,13 @@ import java.nio.file.Files;
 public interface DuplicateHandler {
     void handle(@Nonnull File toKeep, @Nonnull File toDelete) throws IOException;
 
+    @Nonnull
     static DuplicateHandler noop() {
         return (toKeep, toDelete) -> {
         };
     }
 
+    @Nonnull
     static DuplicateHandler rename() {
         return (toKeep, toDelete) -> {
             int i = 1;
@@ -31,6 +33,7 @@ public interface DuplicateHandler {
         };
     }
 
+    @Nonnull
     static DuplicateHandler delete() {
         return (toKeep, toDelete) -> {
             Logger.log("Deleting " + toDelete.getAbsolutePath());
